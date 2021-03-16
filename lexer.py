@@ -8,36 +8,6 @@ from token import Token
 debug = False
 #debug = True
 
-def main():
-    if not debug:
-        # Print header
-        with open('MOM.F90') as src:
-            first_stmt = next(Lexer(src))
-            print(''.join(first_stmt[0].head), end='')
-
-    # Print statements with tails
-    with open('MOM.F90') as src:
-        for stmt in Lexer(src):
-            if debug:
-                # Lexemes + head/tail
-                print('·'.join([lx for lx in stmt]))
-                if stmt:
-                    for lx in stmt:
-                        print('lexeme: {}'.format(lx))
-                        print('  head: {}'.format(lx.head))
-                        print('  tail: {}'.format(lx.tail))
-
-                s = ''.join([lx + ''.join(lx.tail) for lx in stmt])
-                print(repr(s))
-                print(80*'-')
-            else:
-                # "Roundtrip" render
-                s = ''.join([lx + ''.join(lx.tail) for lx in stmt])
-                print(s, end='')
-
-    sys.exit()
-
-
 class Lexer(object):
     """An iterator which returns the lexemes from an input stream."""
     def __init__(self, source):
@@ -113,9 +83,40 @@ class Lexer(object):
 
         return lims
 
+
 def is_liminal(lexeme):
     return lexeme.isspace() or lexeme[0] == '!'
 
 
+def test_lexer():
+    if not debug:
+        # Print header
+        with open('MOM.F90') as src:
+            first_stmt = next(Lexer(src))
+            print(''.join(first_stmt[0].head), end='')
+
+    # Print statements with tails
+    with open('MOM.F90') as src:
+        for stmt in Lexer(src):
+            if debug:
+                # Lexemes + head/tail
+                print('·'.join([lx for lx in stmt]))
+                if stmt:
+                    for lx in stmt:
+                        print('lexeme: {}'.format(lx))
+                        print('  head: {}'.format(lx.head))
+                        print('  tail: {}'.format(lx.tail))
+
+                s = ''.join([lx + ''.join(lx.tail) for lx in stmt])
+                print(repr(s))
+                print(80*'-')
+            else:
+                # "Roundtrip" render
+                s = ''.join([lx + ''.join(lx.tail) for lx in stmt])
+                print(s, end='')
+
+    sys.exit()
+
+
 if __name__ == '__main__':
-    main()
+    test_lexer()
