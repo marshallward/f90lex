@@ -2,6 +2,7 @@
 
 import itertools
 import sys
+
 from scanner import Scanner
 from token import Token
 
@@ -14,7 +15,7 @@ class Lexer(object):
         self.source = source
         self.scanner = Scanner()
 
-        # Presumably needed for split lines (but not yet implemented)
+        # Split line cache
         self.cache = []
 
         # Gather leading liminal tokens before iteration
@@ -31,6 +32,7 @@ class Lexer(object):
         # Gather lexemes for the next statement
         if self.cache:
             lexemes = self.cache
+            self.cache = []
         else:
             line = next(self.source)
             lexemes = self.scanner.parse(line)
@@ -38,30 +40,42 @@ class Lexer(object):
         # TODO: Preprocessing
 
         header = self.prior_tail
-        stmt = []
+        statement = []
         prior_token = None
         for lx in lexemes:
-            # Whitespace, comments
             if is_liminal(lx):
                 if prior_token:
                     prior_token.tail.append(lx)
                 # else:
-                #   assert lx in header.split()[-1]
+                #   assert lx in self.prior_tail
             # elif line continuation
-            # elif semicolon
+            #     TODO!
+            elif lx == ';':
+                # Pull liminals and semicolons from the line
+                idx = lexemes.index(';')
+                for lx in lexemes[idx:]:
+                    if is_liminal(lx) or lx == ';':
+                        prior_token.tail.append(lx)
+                        idx += 1
+                    else:
+                        break
+
+                self.cache = lexemes[idx:]
+                self.prior_tail = prior_token.tail
+                break
             else:
                 tok = Token(lx)
                 tok.head = prior_token.tail if prior_token else header
 
-                stmt.append(tok)
+                statement.append(tok)
 
                 prior_token = tok
 
-        # XXX: Does stmt always exist?  What if all comments?
-        stmt[-1].tail.extend(self.get_liminals())
-        self.prior_tail = stmt[-1].tail
+        if not self.cache:
+            statement[-1].tail.extend(self.get_liminals())
+            self.prior_tail = statement[-1].tail
 
-        return stmt
+        return statement
 
     def get_liminals(self):
         lims = []
@@ -70,13 +84,13 @@ class Lexer(object):
         for line in lookahead:
             lexemes = self.scanner.parse(line)
             for lx in lexemes:
-                if is_liminal(lx):
+                if is_liminal(lx) or lx == ';':
                     lims.append(lx)
                 else:
                     break
 
             # Move source forward if all tokens are liminal
-            if all(is_liminal(lx) for lx in lexemes):
+            if all(is_liminal(lx) or lx == ';' for lx in lexemes):
                 next(self.source)
             else:
                 break
@@ -89,14 +103,17 @@ def is_liminal(lexeme):
 
 
 def test_lexer():
+    fname = sys.argv[1]
+
     if not debug:
         # Print header
-        with open('MOM.F90') as src:
-            first_stmt = next(Lexer(src))
+        with open(fname) as src:
+            lxr = Lexer(src)
+            first_stmt = next(lxr)
             print(''.join(first_stmt[0].head), end='')
 
     # Print statements with tails
-    with open('MOM.F90') as src:
+    with open(fname) as src:
         for stmt in Lexer(src):
             if debug:
                 # Lexemes + head/tail
