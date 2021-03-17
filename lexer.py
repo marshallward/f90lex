@@ -40,28 +40,43 @@ class Lexer(object):
 
         prior_tail = self.prior_tail
         statement = []
-        for lx in lexemes:
-            if lx.isspace() or lx[0] == '!':
-                prior_tail.append(lx)
-            elif lx == ';':
-                # Pull liminals and semicolons from the line
-                idx = lexemes.index(';')
-                for lx in lexemes[idx:]:
-                    if is_liminal(lx):
-                        prior_tail.append(lx)
-                        idx += 1
-                    else:
-                        break
+        line_continue = True
 
-                self.cache = lexemes[idx:]
-                self.prior_tail = prior_tail
-                break
-            else:
-                tok = Token(lx)
-                tok.head = prior_tail
+        while line_continue:
+            line_continue = False
 
-                statement.append(tok)
-                prior_tail = tok.tail
+            for lx in lexemes:
+                if lx.isspace() or lx[0] == '!':
+                    prior_tail.append(lx)
+
+                elif lx == ';':
+                    # Pull liminals and semicolons from the line
+                    idx = lexemes.index(';')
+                    for lx in lexemes[idx:]:
+                        if is_liminal(lx):
+                            prior_tail.append(lx)
+                            idx += 1
+                        else:
+                            break
+
+                    self.cache = lexemes[idx:]
+                    self.prior_tail = prior_tail
+                    break
+
+                elif lx == '&':
+                    # Stick with the simple case for now...
+                    idx = lexemes.index('&')
+                    prior_tail += lexemes[idx:]
+                    lexemes = self.scanner.parse(next(self.source))
+                    line_continue = True
+                    break
+
+                else:
+                    tok = Token(lx)
+                    tok.head = prior_tail
+
+                    statement.append(tok)
+                    prior_tail = tok.tail
 
         if not self.cache:
             statement[-1].tail.extend(self.get_liminals())
@@ -86,7 +101,10 @@ class Lexer(object):
 
 
 def is_liminal(lexeme):
-    return lexeme.isspace() or lexeme[0] == '!' or lexeme == ';'
+    # XXX: Adding '&' here is incorrect.  We need to catch leading '&' lexemes
+    #   and resolve the various reconstructions that can occur.
+    #   It's only added here for now to resolve the most common cases.
+    return lexeme.isspace() or lexeme[0] == '!' or lexeme == ';' or lexeme == '&'
 
 
 def test_lexer():
