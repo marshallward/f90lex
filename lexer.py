@@ -55,21 +55,24 @@ class Lexer(object):
                     lx_split = len(new_lx) > 1
 
                 if not lx_split:
-                    lx = Token(''.join(new_lx[:2]))
-                    lx.head = statement[-1].head
+                    stok = statement[-1]
+                    tok = Token(''.join(new_lx[:2]))
+
+                    tok.head = stok.head
 
                     # Set up the interior liminal tokens (what a paradox!)
                     prior_tail.append('&')
-                    # XXX: Probably need statement[-1].split here...
-                    sp = statement[-1] + ''.join(prior_tail) + lexemes[1]
-                    lx.split = sp
+
+                    sp = stok.split if stok.split else str(stok)
+                    sp = sp + ''.join(prior_tail) + lexemes[1]
+                    tok.split = sp
                     prior_tail = []
 
                     # Currently empty, but may be filled after iteration
-                    lx.tail = prior_tail
+                    tok.tail = prior_tail
 
                     # Assign the new reconstructed token
-                    statement[-1] = lx
+                    statement[-1] = tok
 
                     # XXX: Should new_lx[2:] be prepended here?  Does that
                     #   then mean that lexemes needs to start higher up?
