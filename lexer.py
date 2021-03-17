@@ -6,8 +6,8 @@ import sys
 from scanner import Scanner
 from token import Token
 
-debug = False
-#debug = True
+#debug = False
+debug = True
 
 class Lexer(object):
     """An iterator which returns the lexemes from an input stream."""
@@ -38,40 +38,30 @@ class Lexer(object):
 
         # TODO: Preprocessing
 
-        header = self.prior_tail
+        prior_tail = self.prior_tail
         statement = []
-        prior_token = None
         for lx in lexemes:
             if lx.isspace() or lx[0] == '!':
-                if prior_token:
-                    prior_token.tail.append(lx)
-                # else:
-                #   assert lx in self.prior_tail
-            # elif line continuation
-            #     TODO!
+                prior_tail.append(lx)
             elif lx == ';':
                 # Pull liminals and semicolons from the line
-                # Can I use get_liminals here?
                 idx = lexemes.index(';')
                 for lx in lexemes[idx:]:
                     if is_liminal(lx):
-                        if prior_token:
-                            prior_token.tail.append(lx)
+                        prior_tail.append(lx)
                         idx += 1
                     else:
                         break
 
                 self.cache = lexemes[idx:]
-                if prior_token:
-                    self.prior_tail = prior_token.tail
+                self.prior_tail = prior_tail
                 break
             else:
                 tok = Token(lx)
-                tok.head = prior_token.tail if prior_token else header
+                tok.head = prior_tail
 
                 statement.append(tok)
-
-                prior_token = tok
+                prior_tail = tok.tail
 
         if not self.cache:
             statement[-1].tail.extend(self.get_liminals())
@@ -83,7 +73,6 @@ class Lexer(object):
         lims = []
         for line in self.source:
             lexemes = self.scanner.parse(line)
-            is_lim = lambda lx: is_liminal(lx)
 
             new_lims = itertools.takewhile(is_liminal, lexemes)
             lims += list(new_lims)
