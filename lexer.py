@@ -6,8 +6,8 @@ import sys
 from scanner import Scanner
 from token import Token
 
-#debug = False
-debug = True
+debug = False
+#debug = True
 
 class Lexer(object):
     """An iterator which returns the lexemes from an input stream."""
@@ -28,22 +28,27 @@ class Lexer(object):
         return self.__next__()
 
     def __next__(self):
-        # Gather lexemes for the next statement
-        if self.cache:
-            lexemes = self.cache
-            self.cache = []
-        else:
-            line = next(self.source)
-            lexemes = self.scanner.parse(line)
-
-        # TODO: Preprocessing
-
         prior_tail = self.prior_tail
         statement = []
         line_continue = True
 
         while line_continue:
             line_continue = False
+
+            # Gather lexemes for the next statement
+            if self.cache:
+                lexemes = self.cache
+                self.cache = []
+            else:
+                line = next(self.source)
+                lexemes = self.scanner.parse(line)
+
+            # Reconstruct any line continuations
+            if lexemes[0] == '&':
+                # Cheap solution
+                lexemes = lexemes[1:]
+
+            # TODO: Preprocessing
 
             for lx in lexemes:
                 if lx.isspace() or lx[0] == '!':
@@ -66,8 +71,7 @@ class Lexer(object):
                 elif lx == '&':
                     # Stick with the simple case for now...
                     idx = lexemes.index('&')
-                    prior_tail += lexemes[idx:]
-                    lexemes = self.scanner.parse(next(self.source))
+                    prior_tail += lexemes[idx:] + self.get_liminals()
                     line_continue = True
                     break
 
