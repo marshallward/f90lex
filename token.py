@@ -3,6 +3,7 @@ class Token(str):
         tok = str.__new__(cls, value)
         tok.head = []
         tok.tail = []
+        tok.split = None
         return tok
 
     def __eq__(self, other):

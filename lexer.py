@@ -45,8 +45,39 @@ class Lexer(object):
 
             # Reconstruct any line continuations
             if lexemes[0] == '&':
-                # Cheap solution
-                lexemes = lexemes[1:]
+                # First check if split ends are separate by whitespace
+                lx_split = prior_tail[0].isspace() or lexemes[1].isspace()
+                if not lx_split:
+                    # Try to reconstruct the potential tokens
+                    # NOTE: scanner needs an endline, so we add then drop it
+                    lx_join = statement[-1] + lexemes[1] + '\n'
+                    new_lx = self.scanner.parse(lx_join)[:-1]
+                    lx_split = len(new_lx) > 1
+
+                if not lx_split:
+                    lx = Token(''.join(new_lx[:2]))
+                    lx.head = statement[-1].head
+
+                    # Set up the interior liminal tokens (what a paradox!)
+                    prior_tail.append('&')
+                    # XXX: Probably need statement[-1].split here...
+                    sp = statement[-1] + ''.join(prior_tail) + lexemes[1]
+                    lx.split = sp
+                    prior_tail = []
+
+                    # Currently empty, but may be filled after iteration
+                    lx.tail = prior_tail
+
+                    # Assign the new reconstructed token
+                    statement[-1] = lx
+
+                    # XXX: Should new_lx[2:] be prepended here?  Does that
+                    #   then mean that lexemes needs to start higher up?
+                    lexemes = lexemes[2:]
+                else:
+                    # Append token and proceed as normal
+                    prior_tail.append('&')
+                    lexemes = lexemes[1:]
 
             # TODO: Preprocessing
 
@@ -105,10 +136,7 @@ class Lexer(object):
 
 
 def is_liminal(lexeme):
-    # XXX: Adding '&' here is incorrect.  We need to catch leading '&' lexemes
-    #   and resolve the various reconstructions that can occur.
-    #   It's only added here for now to resolve the most common cases.
-    return lexeme.isspace() or lexeme[0] == '!' or lexeme == ';' or lexeme == '&'
+    return lexeme.isspace() or lexeme[0] == '!' or lexeme == ';'
 
 
 def test_lexer():
@@ -131,14 +159,22 @@ def test_lexer():
                     for lx in stmt:
                         print('lexeme: {}'.format(lx))
                         print('  head: {}'.format(lx.head))
+                        if lx.split:
+                            print(' split: {}'.format(repr(lx.split)))
                         print('  tail: {}'.format(lx.tail))
 
-                s = ''.join([lx + ''.join(lx.tail) for lx in stmt])
+                    s = ''.join([
+                        (lx.split if lx.split else lx) + ''.join(lx.tail)
+                        for lx in stmt
+                    ])
                 print(repr(s))
                 print(80*'-')
             else:
                 # "Roundtrip" render
-                s = ''.join([lx + ''.join(lx.tail) for lx in stmt])
+                s = ''.join([
+                    (lx.split if lx.split else lx) + ''.join(lx.tail)
+                    for lx in stmt
+                ])
                 print(s, end='')
 
     sys.exit()
