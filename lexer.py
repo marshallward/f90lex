@@ -19,8 +19,7 @@ class Lexer(object):
         self.cache = []
 
         # Gather leading liminal tokens before iteration
-        lims = self.get_liminals()
-        self.prior_tail = lims
+        self.prior_tail = self.get_liminals()
 
     def __iter__(self):
         return self
@@ -43,7 +42,7 @@ class Lexer(object):
         statement = []
         prior_token = None
         for lx in lexemes:
-            if is_liminal(lx):
+            if lx.isspace() or lx[0] == '!':
                 if prior_token:
                     prior_token.tail.append(lx)
                 # else:
@@ -52,16 +51,19 @@ class Lexer(object):
             #     TODO!
             elif lx == ';':
                 # Pull liminals and semicolons from the line
+                # Can I use get_liminals here?
                 idx = lexemes.index(';')
                 for lx in lexemes[idx:]:
-                    if is_liminal(lx) or lx == ';':
-                        prior_token.tail.append(lx)
+                    if is_liminal(lx):
+                        if prior_token:
+                            prior_token.tail.append(lx)
                         idx += 1
                     else:
                         break
 
                 self.cache = lexemes[idx:]
-                self.prior_tail = prior_token.tail
+                if prior_token:
+                    self.prior_tail = prior_token.tail
                 break
             else:
                 tok = Token(lx)
@@ -79,27 +81,23 @@ class Lexer(object):
 
     def get_liminals(self):
         lims = []
-        self.source, lookahead = itertools.tee(self.source)
-
-        for line in lookahead:
+        for line in self.source:
             lexemes = self.scanner.parse(line)
-            for lx in lexemes:
-                if is_liminal(lx) or lx == ';':
-                    lims.append(lx)
-                else:
-                    break
+            is_lim = lambda lx: is_liminal(lx)
 
-            # Move source forward if all tokens are liminal
-            if all(is_liminal(lx) or lx == ';' for lx in lexemes):
-                next(self.source)
-            else:
+            new_lims = itertools.takewhile(is_liminal, lexemes)
+            lims += list(new_lims)
+
+            stmt = itertools.dropwhile(is_liminal, lexemes)
+            self.cache = list(stmt)
+            if self.cache:
                 break
 
         return lims
 
 
 def is_liminal(lexeme):
-    return lexeme.isspace() or lexeme[0] == '!'
+    return lexeme.isspace() or lexeme[0] == '!' or lexeme == ';'
 
 
 def test_lexer():
