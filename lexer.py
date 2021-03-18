@@ -99,7 +99,8 @@ class Lexer(object):
                     # Pull liminals and semicolons from the line
                     idx = lexemes.index(';')
                     for lx in lexemes[idx:]:
-                        if is_liminal(lx):
+                        # NOTE: Line continuations after ; are liminals
+                        if is_liminal(lx) or lx == '&':
                             prior_tail.append(lx)
                             idx += 1
                         else:
