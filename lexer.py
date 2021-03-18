@@ -51,7 +51,14 @@ class Lexer(object):
                     # Try to reconstruct the potential tokens
                     # NOTE: scanner needs an endline, so we add then drop it
                     lx_join = statement[-1] + lexemes[1] + '\n'
+
+                    # NOTE: The scanner has a "state" in that it tracks the
+                    #   string delimiter across lines.  So we store this
+                    #   delimiter before using it on this local string.
+                    delim = self.scanner.prior_delim
                     new_lx = self.scanner.parse(lx_join)[:-1]
+                    self.scanner.prior_delim = delim
+
                     lx_split = len(new_lx) > 1
 
                 if not lx_split:
@@ -103,7 +110,6 @@ class Lexer(object):
                     break
 
                 elif lx == '&':
-                    # Stick with the simple case for now...
                     idx = lexemes.index('&')
                     prior_tail += lexemes[idx:] + self.get_liminals()
                     line_continue = True

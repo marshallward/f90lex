@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 import itertools
+import sys
 
 
 class Scanner(object):
@@ -30,16 +33,21 @@ class Scanner(object):
         self.characters = iter(line)
         self.update_chars()
 
+        # String line continuation?
+        lc = True if self.prior_delim else False
+
         while self.char != '\n':
             word = ''
             if self.char in ' \t':
                 while self.char in ' \t':
                     word += self.char
                     self.update_chars()
-
-            elif self.char in '"\'' or (self.prior_delim
-                                        and self.char not in '&!'):
+            #elif self.char in '"\'' or self.prior_delim
+            #                            and self.char not in '&!'):
+            elif self.char in '"\'' or (self.prior_delim and not lc):
                 word = self.parse_string()
+                if self.prior_delim:
+                    lc = True
 
             elif self.char.isalpha() or self.char == '_':
                 word = self.parse_name(line)
@@ -67,6 +75,10 @@ class Scanner(object):
                         self.update_chars()
 
             elif self.char in Scanner.punctuation:
+                # Turn off leading line continuation
+                if self.char == '&':
+                    lc = False
+
                 word = self.char
                 self.update_chars()
 
@@ -203,3 +215,17 @@ class Scanner(object):
     def update_chars(self):
         self.prior_char, self.char = self.char, next(self.characters)
         self.idx += 1
+
+
+def test_scanner():
+    fname = sys.argv[1]
+
+    scanner = Scanner()
+    with open(fname) as f:
+        for line in f:
+            lexemes = scanner.parse(line)
+            print('·'.join([repr(lx)[1:-1] for lx in lexemes]))
+
+
+if __name__ == '__main__':
+    test_scanner()
