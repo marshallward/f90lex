@@ -47,20 +47,33 @@ class Lexer(object):
             if lexemes[0] == '&':
                 # First check if split ends are separate by whitespace
                 lx_split = prior_tail[0].isspace() or lexemes[1].isspace()
-                if not lx_split:
-                    # Try to reconstruct the potential tokens
-                    # NOTE: scanner needs an endline, so we add then drop it
-                    lx_join = statement[-1] + lexemes[1] + '\n'
 
-                    # NOTE: The scanner has a "state" in that it tracks the
-                    #   string delimiter across lines.  So we store this
-                    #   delimiter before using it on this local string.
-                    delim = self.scanner.prior_delim
-                    new_lx = self.scanner.parse(lx_join)[:-1]
-                    self.scanner.prior_delim = delim
+                # If no separating whitespace, try to split via Scanner
+                if not lx_split:
+                    # NOTE: Scanner needs an endline, and split strings expect
+                    #   line continuations in order to track the delimiter
+                    #   across multiple lines, so we append these when needed.
+                    str_split = statement[-1][0] in '\'"' and lexemes[1][-1] != statement[-1][0]
+                    if str_split:
+                        delim = statement[-1][0]
+                        lx_join = statement[-1] + lexemes[1] + '&' + '\n'
+                    else:
+                        delim = None
+                        lx_join = statement[-1] + lexemes[1] + '\n'
+
+                    # NOTE: Use a new Scanner to save self.scanner.prior_delim
+                    scanner = Scanner()
+                    new_lx = scanner.parse(lx_join)
+
+                    # NOTE: Remove the redudant Scanner markup tokens
+                    if str_split:
+                        new_lx = new_lx[:-2]
+                    else:
+                        new_lx = new_lx[:-1]
 
                     lx_split = len(new_lx) > 1
 
+                # The token has been split, try to reconstruct it here.
                 if not lx_split:
                     stok = statement[-1]
                     tok = Token(''.join(new_lx[:2]))
@@ -164,7 +177,7 @@ def test_lexer():
         for stmt in Lexer(src):
             if debug:
                 # Lexemes + head/tail
-                print('·'.join([lx for lx in stmt]))
+                print(' · '.join([lx for lx in stmt]))
                 if stmt:
                     for lx in stmt:
                         print('lexeme: {}'.format(lx))

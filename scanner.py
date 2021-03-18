@@ -224,7 +224,7 @@ def test_scanner():
     with open(fname) as f:
         for line in f:
             lexemes = scanner.parse(line)
-            print('·'.join([repr(lx)[1:-1] for lx in lexemes]))
+            print(' · '.join([repr(lx)[1:-1] for lx in lexemes]))
 
 
 if __name__ == '__main__':
