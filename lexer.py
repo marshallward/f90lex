@@ -40,6 +40,15 @@ class Lexer(object):
                 lexemes = self.cache
                 self.cache = []
             else:
+                # NOTE: This can only happen on the final iteration.
+                #   This is because we call get_liminals() at __init__(), and
+                #   then conditionally call it again if cache is empty.
+                #
+                # The one exception is the final line, for which the internal
+                # for-loop returns nothing.
+                #
+                # In all conceivable cases, next(source) raises StopIteration.
+                # But for now, I will leave this in case of the unforeseen.
                 line = next(self.source)
                 lexemes = self.scanner.parse(line)
 
@@ -47,7 +56,7 @@ class Lexer(object):
 
             # Reconstruct any line continuations
             if lexemes[0] == '&':
-                # First check if split ends are separate by whitespace
+                # First check if the split is separated by whitespace
                 lx_split = prior_tail[0].isspace() or lexemes[1].isspace()
 
                 # If no separating whitespace, try to split via Scanner
@@ -80,7 +89,7 @@ class Lexer(object):
                     #   then mean that lexemes needs to start higher up?
                     lexemes = lexemes[2:]
                 else:
-                    # Append token and proceed as normal
+                    # Store '&' as liminal and proceed as normal
                     prior_tail.append('&')
                     lexemes = lexemes[1:]
 
