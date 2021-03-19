@@ -6,8 +6,8 @@ import sys
 from scanner import Scanner
 from token import Token
 
-debug = False
-#debug = True
+#debug = False
+debug = True
 
 class Lexer(object):
     """An iterator which returns the lexemes from an input stream."""
@@ -43,6 +43,8 @@ class Lexer(object):
                 line = next(self.source)
                 lexemes = self.scanner.parse(line)
 
+            # TODO: Preprocessing
+
             # Reconstruct any line continuations
             if lexemes[0] == '&':
                 # First check if split ends are separate by whitespace
@@ -50,27 +52,7 @@ class Lexer(object):
 
                 # If no separating whitespace, try to split via Scanner
                 if not lx_split:
-                    # NOTE: Scanner needs an endline, and split strings expect
-                    #   line continuations in order to track the delimiter
-                    #   across multiple lines, so we append these when needed.
-                    str_split = statement[-1][0] in '\'"' and lexemes[1][-1] != statement[-1][0]
-                    if str_split:
-                        delim = statement[-1][0]
-                        lx_join = statement[-1] + lexemes[1] + '&' + '\n'
-                    else:
-                        delim = None
-                        lx_join = statement[-1] + lexemes[1] + '\n'
-
-                    # NOTE: Use a new Scanner to save self.scanner.prior_delim
-                    scanner = Scanner()
-                    new_lx = scanner.parse(lx_join)
-
-                    # NOTE: Remove the redudant Scanner markup tokens
-                    if str_split:
-                        new_lx = new_lx[:-2]
-                    else:
-                        new_lx = new_lx[:-1]
-
+                    new_lx = resplit_tokens(statement[-1], lexemes[1])
                     lx_split = len(new_lx) > 1
 
                 # The token has been split, try to reconstruct it here.
@@ -102,8 +84,7 @@ class Lexer(object):
                     prior_tail.append('&')
                     lexemes = lexemes[1:]
 
-            # TODO: Preprocessing
-
+            # Build tokens from lexemes
             for lx in lexemes:
                 if lx.isspace() or lx[0] == '!':
                     prior_tail.append(lx)
@@ -160,6 +141,30 @@ class Lexer(object):
 
 def is_liminal(lexeme):
     return lexeme.isspace() or lexeme[0] == '!' or lexeme == ';'
+
+
+def resplit_tokens(first, second):
+    # NOTE: Scanner needs an endline, and split strings expect line
+    #   continuations in order to track the delimiter across multiple lines, so
+    #   we append these when needed.
+    str_split = first[0] in '\'"' and second[-1] != first[0]
+    if str_split:
+        delim = first[0]
+        lx_join = first + second + '&' + '\n'
+    else:
+        delim = None
+        lx_join = first + second + '\n'
+
+    scanner = Scanner()
+    new_lx = scanner.parse(lx_join)
+
+    # NOTE: Remove the redudant Scanner markup tokens
+    if str_split:
+        new_lx = new_lx[:-2]
+    else:
+        new_lx = new_lx[:-1]
+
+    return new_lx
 
 
 def test_lexer():
