@@ -1,13 +1,17 @@
 #!/usr/bin/env python
 
+from collections import OrderedDict
 import itertools
-import sys
 
 from scanner import Scanner
 from token import Token
 
-#debug = False
-debug = True
+debug = False
+#debug = True
+
+# Just for tesitng
+import os
+import sys
 
 class Lexer(object):
     """An iterator which returns the lexemes from an input stream."""
@@ -17,6 +21,10 @@ class Lexer(object):
 
         # Split line cache
         self.cache = []
+
+        # Preprocessor macros
+        # NOTE: Macros are applied in order of #define, so use OrderedDict
+        self.defines = OrderedDict()
 
         # Gather leading liminal tokens before iteration
         self.prior_tail = self.get_liminals()
@@ -49,10 +57,22 @@ class Lexer(object):
                 #
                 # In all conceivable cases, next(source) raises StopIteration.
                 # But for now, I will leave this in case of the unforeseen.
+
+                # Preprocessing
+                # XXX: Preprocessing has an "head-tail" problem, where we need
+                #   to resolve both before and after each iteration.
+                #   Here we are preprocessing the final liminal tail
+                preproc = (lx for lx in self.prior_tail if lx[0] == '#')
+                for pp in preproc:
+                    self.preprocess(pp)
+
                 line = next(self.source)
                 lexemes = self.scanner.parse(line)
 
-            # TODO: Preprocessing
+            # Preprocessing
+            preproc = (lx for lx in self.prior_tail if lx[0] == '#')
+            for pp in preproc:
+                self.preprocess(pp)
 
             # Reconstruct any line continuations
             if lexemes[0] == '&':
@@ -92,6 +112,9 @@ class Lexer(object):
                     # Store '&' as liminal and proceed as normal
                     prior_tail.append('&')
                     lexemes = lexemes[1:]
+
+            # Substitute any lexemes
+            lexemes = [lx if lx not in self.defines else self.defines[lx] for lx in lexemes]
 
             # Build tokens from lexemes
             for lx in lexemes:
@@ -147,9 +170,108 @@ class Lexer(object):
 
         return lims
 
+    def preprocess(self, line):
+        assert(line[0] == '#')
+        line = line[1:]
+
+        words = line.strip().split(None, 2)
+        directive = words[0]
+
+        # Macros
+
+        if directive == 'define':
+            # TODO: macro functions
+            replacement = words[2] if len(words) == 3 else None
+            self.defines[words[1]] = replacement
+
+        elif directive == 'undef':
+            identifier = words[1]
+            try:
+                self.defines.pop(identifier)
+            except KeyError:
+                pass
+                #print('f90lex: warning: unset identifier {} was never '
+                #      'defined.'.format(identifier))
+
+        # Conditionals (stop_parsing not yet implemented (if ever))
+
+        # TODO (also #elif)
+        #elif directive == 'if':
+        #    expr = line.strip().split(None, 1)[1]
+
+        elif directive == 'ifdef':
+            macro = line.split(None, 1)[1]
+            if macro not in self.defines:
+                self.stop_parsing = True
+
+        elif directive == 'ifndef':
+            macro = line.split(None, 1)[1]
+            if macro in self.defines:
+                self.stop_parsing = True
+
+        elif directive == 'else':
+            self.stop_parsing = not self.stop_parsing
+
+        elif directive == 'endif':
+            self.stop_parsing = False
+
+        # Headers (this can't possibly be working...)
+
+        elif directive.startswith('include'):
+            # This directive uniquely does not require a whitespace delimiter.
+            if directive != 'include':
+                inc_fpath = directive.replace('include', '', 1)
+                words[0] = 'include'
+                words.insert(1, inc_fpath)
+
+            assert (words[1][0], words[1][-1]) in (('"', '"'), ('<', '>'))
+            inc_fname = words[1][1:-1]
+
+            ## First check current directory
+            #curdir = os.path.dirname(self.path)
+            #test_fpath = os.path.join(curdir, inc_fname)
+
+            #inc_path = None
+            #if os.path.isfile(test_fpath):
+            #    inc_path = test_fpath
+            #elif self.project:
+            #    # Scan the project directories for the file
+            #    for idir in self.project.directories:
+            #        test_fpath = os.path.join(idir, inc_fname)
+            #        if os.path.isfile(test_fpath):
+            #            inc_path = test_fpath
+            ## else: do not bother looking
+
+            # XXX: Temporarily look in the current directory
+            inc_path = inc_fname if os.path.isfile(inc_fname) else None
+
+            if inc_path:
+                with open(inc_path) as inc:
+                    lexer = Lexer(inc)
+                    lexer.defines = self.defines
+
+                    # XXX: All this does at the moment is handle preprocessing
+                    #   directives preceding the first statement (if any).
+                    # TODO: Need to somehow "override" self.source with inc...
+                    for stmt in lexer:
+                        print(' -> inc: stmt: {}'.format(stmt))
+                        for tok in stmt:
+                            print('    -> {}'.format(tok))
+                            print('  h -> {}'.format(tok.head))
+                            print('  t -> {}'.format(tok.tail))
+            else:
+                print('f90lex: Include file {} not found; skipping.'
+                      ''.format(inc_fname))
+
+        # What else is there?  #pragma, #line, #error, ... ?
+
+        else:
+            print('f90lex: unsupported preprocess directive: {}'
+                  ''.format(line).rstrip())
+
 
 def is_liminal(lexeme):
-    return lexeme.isspace() or lexeme[0] == '!' or lexeme == ';'
+    return lexeme.isspace() or lexeme[0] in '!#' or lexeme == ';'
 
 
 def resplit_tokens(first, second):
@@ -179,16 +301,13 @@ def resplit_tokens(first, second):
 def test_lexer():
     fname = sys.argv[1]
 
-    if not debug:
-        # Print header
-        with open(fname) as src:
-            lxr = Lexer(src)
-            first_stmt = next(lxr)
-            print(''.join(first_stmt[0].head), end='')
-
     # Print statements with tails
     with open(fname) as src:
-        for stmt in Lexer(src):
+        lexer = Lexer(src)
+        if not debug:
+            print(''.join(lexer.prior_tail), end='')
+
+        for stmt in lexer:
             if debug:
                 # Lexemes + head/tail
                 print(' · '.join([lx for lx in stmt]))
