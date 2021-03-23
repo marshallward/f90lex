@@ -4,7 +4,7 @@ from collections import OrderedDict
 import itertools
 
 from scanner import Scanner
-from token import Token
+from ftoken import Token, PToken
 
 debug = False
 #debug = True
@@ -25,6 +25,9 @@ class Lexer(object):
         # Preprocessor macros
         # NOTE: Macros are applied in order of #define, so use OrderedDict
         self.defines = OrderedDict()
+
+        # Parser flow control; not yet implemented...
+        self.stop_parsing = False
 
         # Gather leading liminal tokens before iteration
         self.prior_tail = self.get_liminals()
@@ -113,9 +116,6 @@ class Lexer(object):
                     prior_tail.append('&')
                     lexemes = lexemes[1:]
 
-            # Substitute any lexemes
-            lexemes = [lx if lx not in self.defines else self.defines[lx] for lx in lexemes]
-
             # Build tokens from lexemes
             for lx in lexemes:
                 if lx.isspace() or lx[0] == '!':
@@ -124,10 +124,10 @@ class Lexer(object):
                 elif lx == ';':
                     # Pull liminals and semicolons from the line
                     idx = lexemes.index(';')
-                    for lx in lexemes[idx:]:
+                    for lxm in lexemes[idx:]:
                         # NOTE: Line continuations after ; are liminals
-                        if is_liminal(lx) or lx == '&':
-                            prior_tail.append(lx)
+                        if is_liminal(lxm) or lxm == '&':
+                            prior_tail.append(lxm)
                             idx += 1
                         else:
                             break
@@ -143,11 +143,20 @@ class Lexer(object):
                     break
 
                 else:
-                    tok = Token(lx)
-                    tok.head = prior_tail
+                    if lx in self.defines:
+                        ptoks = [PToken(lxm) for lxm in self.defines[lx]]
+                        ptoks[0].head = prior_tail
+                        prior_tail = ptoks[-1].tail
+                        ptoks[0].pp = lx
 
-                    statement.append(tok)
-                    prior_tail = tok.tail
+                        statement.extend(ptoks)
+                    else:
+                        tok = Token(lx)
+                        tok.head = prior_tail
+
+                        statement.append(tok)
+                        prior_tail = tok.tail
+
 
         if not self.cache:
             statement[-1].tail.extend(self.get_liminals())
@@ -171,7 +180,7 @@ class Lexer(object):
         return lims
 
     def preprocess(self, line):
-        assert(line[0] == '#')
+        assert line[0] == '#'
         line = line[1:]
 
         words = line.strip().split(None, 2)
@@ -180,9 +189,21 @@ class Lexer(object):
         # Macros
 
         if directive == 'define':
-            # TODO: macro functions
-            replacement = words[2] if len(words) == 3 else None
-            self.defines[words[1]] = replacement
+            macro_name = words[1]
+            replacement = words[2] if len(words) == 3 else ''
+
+            # My berk scanner needs an endline
+            scanner = Scanner()
+            lexemes = scanner.parse(replacement + '\n')
+
+            # We do not track whitespace in macro bodies. (but do we need to?)
+            # NOTE: This also strips the endline
+            pp_lexemes = [lx for lx in lexemes if not lx.isspace()]
+
+            self.defines[macro_name] = pp_lexemes
+
+            # Some useful debug output...
+            #print('#define {} → {}'.format(macro_name, pp_lexemes))
 
         elif directive == 'undef':
             identifier = words[1]
@@ -195,7 +216,7 @@ class Lexer(object):
 
         # Conditionals (stop_parsing not yet implemented (if ever))
 
-        # TODO (also #elif)
+        # TODO (#if #elif)
         #elif directive == 'if':
         #    expr = line.strip().split(None, 1)[1]
 
@@ -280,10 +301,8 @@ def resplit_tokens(first, second):
     #   we append these when needed.
     str_split = first[0] in '\'"' and second[-1] != first[0]
     if str_split:
-        delim = first[0]
         lx_join = first + second + '&' + '\n'
     else:
-        delim = None
         lx_join = first + second + '\n'
 
     scanner = Scanner()
@@ -317,10 +336,12 @@ def test_lexer():
                         print('  head: {}'.format(lx.head))
                         if lx.split:
                             print(' split: {}'.format(repr(lx.split)))
+                        if hasattr(lx, 'pp'):
+                            print('    pp: {}'.format(repr(lx.pp)))
                         print('  tail: {}'.format(lx.tail))
 
                     s = ''.join([
-                        (lx.split if lx.split else lx) + ''.join(lx.tail)
+                        (lx.split if lx.split else str(lx)) + ''.join(lx.tail)
                         for lx in stmt
                     ])
                 print(repr(s))
@@ -328,13 +349,12 @@ def test_lexer():
             else:
                 # "Roundtrip" render
                 s = ''.join([
-                    (lx.split if lx.split else lx) + ''.join(lx.tail)
+                    (lx.split if lx.split else str(lx)) + ''.join(lx.tail)
                     for lx in stmt
                 ])
                 print(s, end='')
 
-    sys.exit()
-
 
 if __name__ == '__main__':
     test_lexer()
+    sys.exit()
