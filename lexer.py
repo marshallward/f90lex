@@ -13,10 +13,13 @@ debug = False
 import os
 import sys
 
+
 class Lexer(object):
     """An iterator which returns the lexemes from an input stream."""
     def __init__(self, source):
         self.source = source
+        self.include = None
+
         self.scanner = Scanner()
 
         # Split line cache
@@ -26,11 +29,18 @@ class Lexer(object):
         # NOTE: Macros are applied in order of #define, so use OrderedDict
         self.defines = OrderedDict()
 
-        # Parser flow control; not yet implemented...
+        # Parser flow control
+        # XXX: This probably does not need to be an object property, and
+        #   could be returned from preprocess() to get_liminals()
         self.stop_parsing = False
 
         # Gather leading liminal tokens before iteration
         self.prior_tail = self.get_liminals()
+
+        # Preprocess the liminals preceding the first statement
+        preproc = (lx for lx in self.prior_tail if lx[0] == '#')
+        for pp in preproc:
+            self.preprocess(pp)
 
     def __iter__(self):
         return self
@@ -72,11 +82,6 @@ class Lexer(object):
                 line = next(self.source)
                 lexemes = self.scanner.parse(line)
 
-            # Preprocessing
-            preproc = (lx for lx in self.prior_tail if lx[0] == '#')
-            for pp in preproc:
-                self.preprocess(pp)
-
             # Reconstruct any line continuations
             if lexemes[0] == '&':
                 # First check if the split is separated by whitespace
@@ -107,9 +112,6 @@ class Lexer(object):
 
                     # Assign the new reconstructed token
                     statement[-1] = tok
-
-                    # XXX: Should new_lx[2:] be prepended here?  Does that
-                    #   then mean that lexemes needs to start higher up?
                     lexemes = lexemes[2:]
                 else:
                     # Store '&' as liminal and proceed as normal
@@ -143,6 +145,8 @@ class Lexer(object):
                     break
 
                 else:
+                    # NOTE: This is probably happening later than it should;
+                    #   Preprocessing is handled in liminals!
                     if lx in self.defines:
                         ptoks = [PToken(lxm) for lxm in self.defines[lx]]
                         ptoks[0].head = prior_tail
@@ -157,7 +161,6 @@ class Lexer(object):
                         statement.append(tok)
                         prior_tail = tok.tail
 
-
         if not self.cache:
             statement[-1].tail.extend(self.get_liminals())
             self.prior_tail = statement[-1].tail
@@ -169,13 +172,21 @@ class Lexer(object):
         for line in self.source:
             lexemes = self.scanner.parse(line)
 
-            new_lims = itertools.takewhile(is_liminal, lexemes)
-            lims += list(new_lims)
+            new_lims = list(itertools.takewhile(is_liminal, lexemes))
+            lims += new_lims
 
-            stmt = itertools.dropwhile(is_liminal, lexemes)
-            self.cache = list(stmt)
-            if self.cache:
-                break
+            # Apply preprocessing to set up subsequent statements
+            if new_lims and new_lims[0][0] == '#':
+                self.preprocess(new_lims[0])
+
+            # Statements are liminals if preprocessing has suspended parsing
+            stmt = list(itertools.dropwhile(is_liminal, lexemes))
+            if self.stop_parsing:
+                lims += stmt
+            else:
+                self.cache = stmt
+                if self.cache:
+                    break
 
         return lims
 
@@ -196,23 +207,22 @@ class Lexer(object):
             scanner = Scanner()
             lexemes = scanner.parse(replacement + '\n')
 
-            # We do not track whitespace in macro bodies. (but do we need to?)
-            # NOTE: This also strips the endline
+            # NOTES:
+            # - We currently do not track whitespace created by macros.
+            # - This also strips the endline.
             pp_lexemes = [lx for lx in lexemes if not lx.isspace()]
 
             self.defines[macro_name] = pp_lexemes
-
-            # Some useful debug output...
-            #print('#define {} → {}'.format(macro_name, pp_lexemes))
 
         elif directive == 'undef':
             identifier = words[1]
             try:
                 self.defines.pop(identifier)
             except KeyError:
+                # Useful, but perhaps too aggressive.
+                # print('f90lex: warning: unset identifier {} was never '
+                #       'defined.'.format(identifier))
                 pass
-                #print('f90lex: warning: unset identifier {} was never '
-                #      'defined.'.format(identifier))
 
         # Conditionals (stop_parsing not yet implemented (if ever))
 
@@ -270,16 +280,7 @@ class Lexer(object):
                 with open(inc_path) as inc:
                     lexer = Lexer(inc)
                     lexer.defines = self.defines
-
-                    # XXX: All this does at the moment is handle preprocessing
-                    #   directives preceding the first statement (if any).
-                    # TODO: Need to somehow "override" self.source with inc...
-                    for stmt in lexer:
-                        print(' -> inc: stmt: {}'.format(stmt))
-                        for tok in stmt:
-                            print('    -> {}'.format(tok))
-                            print('  h -> {}'.format(tok.head))
-                            print('  t -> {}'.format(tok.tail))
+                    self.include = lexer
             else:
                 print('f90lex: Include file {} not found; skipping.'
                       ''.format(inc_fname))
@@ -337,7 +338,7 @@ def test_lexer():
                         if lx.split:
                             print(' split: {}'.format(repr(lx.split)))
                         if hasattr(lx, 'pp'):
-                            print('    pp: {}'.format(repr(lx.pp)))
+                            print('    pp: {}'.format(repr(lx)))
                         print('  tail: {}'.format(lx.tail))
 
                     s = ''.join([
