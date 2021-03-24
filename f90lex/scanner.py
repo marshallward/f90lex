@@ -1,20 +1,27 @@
-#!/usr/bin/env python
+"""The f90lex Scanner.
 
+The ``Scanner`` object creates a list of Fortran lexemes from a line of Fortran
+source.  The line is expected to be terminated with an endline (``\n``).
+
+We use an object here because there is some "state" regarding line continuation
+of split strings.  But more modular design options are possible and could be
+used in the future.
+
+``Scanner`` is a slightly updated version of the scanner which appeared in the
+``flint`` project (and is probably going to be ported back over anyway...).
+
+:copyright: Copyright 2021 Marshall Ward, see AUTHORS for details.
+:license: Apache License, Version 2.0, see LICENSE for details.
+"""
 import itertools
-import sys
 
 
 class Scanner(object):
 
-    # I don't use these two
-    special_chars = ' =+-*/\\()[]{},.:;!"%&~<>?\'`|$#@'     # Table 3.1
-    lexical_tokens = '=+-*/()[],.:;%&<>'                    # Meaningful?
-
-    # I only use this one
     punctuation = '=+-*/\\()[]{},:;%&~<>?`|$#@'    # Unhandled Table 3.1 tokens
 
     # Token pairs (syntax and operators)
-    # TODO: (/ and /) are currently removed, for reasons discussed below.
+    # NOTE: (/ and /) are currently removed, for reasons discussed below.
     pairs = ('::', '=>', '**', '//', '==', '/=', '<=', '>=')
 
     def __init__(self):
@@ -215,17 +222,3 @@ class Scanner(object):
     def update_chars(self):
         self.prior_char, self.char = self.char, next(self.characters)
         self.idx += 1
-
-
-def test_scanner():
-    fname = sys.argv[1]
-
-    scanner = Scanner()
-    with open(fname) as f:
-        for line in f:
-            lexemes = scanner.parse(line)
-            print(' · '.join([repr(lx)[1:-1] for lx in lexemes]))
-
-
-if __name__ == '__main__':
-    test_scanner()

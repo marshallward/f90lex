@@ -1,26 +1,28 @@
-#!/usr/bin/env python
+"""The f90lex Lexer.
 
+``Lexer`` is an iterator which is initalized by an input stream (usually a
+file) and each iteration returns the next complete Fortran statement.
+
+:copyright: Copyright 2021 Marshall Ward, see AUTHORS for details.
+:license: Apache License, Version 2.0, see LICENSE for details.
+"""
 from collections import OrderedDict
 import itertools
 
-from scanner import Scanner
-from ftoken import Token, PToken
-
-debug = False
-#debug = True
-
-# Just for tesitng
-import os
-import sys
+from f90lex.scanner import Scanner
+from f90lex.ftoken import Token, PToken
 
 
 class Lexer(object):
     """An iterator which returns the lexemes from an input stream."""
     def __init__(self, source):
         self.source = source
-        self.includes = None
 
+        # A reuseable Lexeme scanner
         self.scanner = Scanner()
+
+        # Cached statements from preprocessed headers
+        self.includes = []
 
         # Split line cache
         self.cache = []
@@ -49,7 +51,7 @@ class Lexer(object):
         return self.__next__()
 
     def __next__(self):
-        # Return #include statments if cached, and exit immediately
+        # Return `#include` statments if cached, and exit immediately
         if self.includes:
             inc_stmt = self.includes.pop()
             # Strip the statement of liminals and display strings
@@ -326,46 +328,3 @@ def resplit_tokens(first, second):
         new_lx = new_lx[:-1]
 
     return new_lx
-
-
-def test_lexer():
-    fname = sys.argv[1]
-
-    # Print statements with tails
-    with open(fname) as src:
-        lexer = Lexer(src)
-        if not debug:
-            print(''.join(lexer.prior_tail), end='')
-
-        for stmt in lexer:
-            if debug:
-                # Lexemes + head/tail
-                print(' · '.join([lx for lx in stmt]))
-                if stmt:
-                    for lx in stmt:
-                        print('lexeme: {}'.format(lx))
-                        print('  head: {}'.format(lx.head))
-                        if lx.split:
-                            print(' split: {}'.format(repr(lx.split)))
-                        if hasattr(lx, 'pp'):
-                            print('    pp: {}'.format(repr(lx)))
-                        print('  tail: {}'.format(lx.tail))
-
-                    s = ''.join([
-                        (lx.split if lx.split else str(lx)) + ''.join(lx.tail)
-                        for lx in stmt
-                    ])
-                print(repr(s))
-                print(80*'-')
-            else:
-                # "Roundtrip" render
-                s = ''.join([
-                    (lx.split if lx.split else str(lx)) + ''.join(lx.tail)
-                    for lx in stmt
-                ])
-                print(s, end='')
-
-
-if __name__ == '__main__':
-    test_lexer()
-    sys.exit()
