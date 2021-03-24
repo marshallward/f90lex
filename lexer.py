@@ -18,7 +18,7 @@ class Lexer(object):
     """An iterator which returns the lexemes from an input stream."""
     def __init__(self, source):
         self.source = source
-        self.include = None
+        self.includes = None
 
         self.scanner = Scanner()
 
@@ -49,6 +49,14 @@ class Lexer(object):
         return self.__next__()
 
     def __next__(self):
+        # Return #include statments if cached, and exit immediately
+        if self.includes:
+            inc_stmt = self.includes.pop()
+            # Strip the statement of liminals and display strings
+            statement = [PToken(str(tok), pp='') for tok in inc_stmt]
+            return statement
+
+        # If no self.includes, tokenize as usual
         prior_tail = self.prior_tail
         statement = []
         line_continue = True
@@ -280,7 +288,9 @@ class Lexer(object):
                 with open(inc_path) as inc:
                     lexer = Lexer(inc)
                     lexer.defines = self.defines
-                    self.include = lexer
+                    self.includes = []
+                    for stmt in lexer:
+                        self.includes.append(stmt)
             else:
                 print('f90lex: Include file {} not found; skipping.'
                       ''.format(inc_fname))
